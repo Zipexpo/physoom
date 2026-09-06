@@ -209,7 +209,7 @@ async function userEvents(email) {
  * Reconcile a user's Physoom schedule into their Physoom Google calendar:
  * insert new, patch changed, delete removed. Returns counts.
  */
-export async function syncUserToGoogle(email, { offset = 0, limit = Infinity } = {}) {
+export async function syncUserToGoogle(email, { offset = 0, limit = Infinity, dutiesOnly = false } = {}) {
   if (!isGoogleConfigured()) return { skipped: "not-configured" };
   await connectToDb();
   const user = await User.findOne({ email }, "google").lean();
@@ -291,7 +291,9 @@ export async function syncUserToGoogle(email, { offset = 0, limit = Infinity } =
     existing = await listExisting();
   }
 
-  const physEvs = await userEvents(email);
+  // dutiesOnly: chỉ đồng bộ ca trực (dùng cho webhook Offisoom báo đổi ca) — bỏ
+  // qua lớp học để nhẹ và nhanh.
+  const physEvs = dutiesOnly ? [] : await userEvents(email);
 
   // Ca trực (Offisoom) cũng đưa lên Google. Chúng KHÔNG phải CalendarEvent nên
   // tạo "pseudo-event" với id ổn định (duty:<giờ bắt đầu>:<cơ sở>) để cùng luồng
@@ -331,7 +333,7 @@ export async function syncUserToGoogle(email, { offset = 0, limit = Infinity } =
   // nếu KHÔNG nằm ở đây và cũng không trên Google → lớp đó không gắn với email
   // này (vấn đề dữ liệu, không phải đồng bộ).
   let unsynced;
-  if (offset === 0) {
+  if (offset === 0 && !dutiesOnly) {
     const cutoff2 = windowStart();
     const onCalendar = await CalendarEvent.find(
       {
@@ -473,15 +475,21 @@ export async function syncUserToGoogle(email, { offset = 0, limit = Infinity } =
   // delete every event the later batches haven't inserted yet. `seen` is the full
   // schedule (not just this batch), so the final delete pass is correct.
   const cutoff = windowStart();
-  const suspicious = evs.length === 0 && existing.size >= 3;
+  // dutiesOnly: chỉ xét trên tập ca trực (đừng để "0 lớp" bị coi là đáng ngờ và
+  // đừng đụng vào lớp học). Full sync: như cũ.
+  const dutyKeys = () => [...existing.keys()].filter((k) => String(k).startsWith("duty:"));
+  const suspicious = dutiesOnly
+    ? dutyPseudos.length === 0 && dutyKeys().length >= 3
+    : evs.length === 0 && existing.size >= 3;
   if (done && !suspicious) {
     const stale = [...existing].filter(
       ([pid, info]) =>
         !seen.has(pid) &&
         (!info.start || new Date(info.start) >= cutoff) &&
-        // KHÔNG xoá sự kiện ca trực khi tích hợp Offisoom đang TẮT/không kéo được
-        // (fetch trả [] → seen thiếu duty → sẽ xoá nhầm). Chỉ dọn duty khi đang
-        // thực sự quản lý duty.
+        // dutiesOnly: CHỈ xoá ca trực (không đụng lớp học).
+        (!dutiesOnly || String(pid).startsWith("duty:")) &&
+        // KHÔNG xoá ca trực khi tích hợp Offisoom TẮT/không kéo được (fetch [] →
+        // seen thiếu duty → xoá nhầm). Chỉ dọn duty khi đang quản lý duty.
         (manageDuties || !String(pid).startsWith("duty:"))
     );
     await runPool(stale, async ([, info]) => {
