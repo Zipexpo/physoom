@@ -23,6 +23,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         session.user.isSuperAdmin = token.isSuperAdmin;
         session.user.adminScope = token.adminScope || [];
         session.user.teacher_id = token.teacher_id;
+        session.user.department = token.department || "";
         // Định danh bất biến của user, để app ngoài (Offisoom, ACADsoom) khoá hồ
         // sơ vào đây thay vì vào email — email đổi thì hồ sơ vẫn là một.
         if (token.uid) session.user.id = token.uid;
@@ -53,7 +54,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
           await connectToDb();
           const dbUser = await User.findOne(
             { email: token.user.email },
-            "isAdmin isSuperAdmin adminScope teacher_id"
+            "isAdmin isSuperAdmin adminScope teacher_id department"
           ).lean();
           if (dbUser) {
             token.uid = String(dbUser._id);
@@ -62,10 +63,12 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
             token.isSuperAdmin = !!dbUser.isSuperAdmin;
             token.adminScope = Array.isArray(dbUser.adminScope) ? dbUser.adminScope.map((s) => String(s)) : [];
             token.teacher_id = dbUser.teacher_id;
+            token.department = dbUser.department || "";
             token.user.isAdmin = token.isAdmin;
             token.user.isSuperAdmin = token.isSuperAdmin;
             token.user.adminScope = token.adminScope;
             token.user.teacher_id = token.teacher_id;
+            token.user.department = token.department;
           }
         } catch (e) {
           console.error("jwt role refresh failed", e);

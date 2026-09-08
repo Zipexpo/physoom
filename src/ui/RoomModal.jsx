@@ -15,6 +15,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { roomSchema as schema } from "@/models/utils";
 import { Plus, Trash, Trash2Icon } from "lucide-react";
 import { locationList, categoryList } from "@/models/ulti";
+import { DEPARTMENTS } from "@/lib/departments";
 import { toast } from "react-toastify";
 import { useI18n } from "@/i18n/I18nProvider";
 
@@ -170,6 +171,27 @@ const RoomModal = ({ data, isOpen, onOpenChange, onSave = () => {} }) => {
                   >
                     {categoryList.short.map((cat) => (
                       <SelectItem key={cat}>{cat}</SelectItem>
+                    ))}
+                  </Select>
+                )}
+              />
+              <Controller
+                name="allowedDepartments"
+                control={control}
+                render={({ field }) => (
+                  <Select
+                    label="Bộ môn được phép đặt"
+                    placeholder="Để trống = mọi bộ môn"
+                    description="Chỉ các bộ môn chọn ở đây mới đặt được phòng này (admin luôn đặt được). Để trống = không giới hạn."
+                    selectedKeys={new Set(field.value || [])}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      field.onChange(v ? v.split(",") : []);
+                    }}
+                    selectionMode="multiple"
+                  >
+                    {DEPARTMENTS.map((d) => (
+                      <SelectItem key={d.name}>{d.name}</SelectItem>
                     ))}
                   </Select>
                 )}

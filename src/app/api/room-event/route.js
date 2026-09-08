@@ -6,6 +6,7 @@ import User from "@/models/user";
 import { auth } from "@/lib/auth";
 import { notify } from "@/lib/notify";
 import { pushEventToGoogle } from "@/lib/googleCalendar";
+import { normalizeDepartment } from "@/lib/departments";
 import moment from "moment";
 
 // Immediate event sync can hit the Google API for several participants — allow
@@ -92,6 +93,27 @@ export const POST = async (request) => {
         { success: false, message: "Không thể đặt phòng cho thời gian trong quá khứ." },
         { status: 400 }
       );
+    }
+
+    // Giới hạn đặt phòng theo bộ môn: phòng có thể chỉ cho một số bộ môn đặt.
+    // Admin bỏ qua; người thường phải thuộc bộ môn được phép. Rỗng = ai cũng đặt.
+    if (roomId && !isAdmin) {
+      const room = await Room.findById(roomId, "allowedDepartments title").lean();
+      const allowed = (room?.allowedDepartments || []).filter(Boolean);
+      if (allowed.length) {
+        const me = await User.findOne({ email: session.user.email }, "department").lean();
+        const myDept = normalizeDepartment(me?.department);
+        const ok = myDept && allowed.map(normalizeDepartment).includes(myDept);
+        if (!ok) {
+          return NextResponse.json(
+            {
+              success: false,
+              message: `Phòng "${room.title}" chỉ dành cho bộ môn: ${allowed.join(", ")}. Tài khoản của bạn không thuộc bộ môn được phép — vui lòng liên hệ quản trị.`,
+            },
+            { status: 403 }
+          );
+        }
+      }
     }
 
     // Room-clash only matters when a room is actually chosen (no room → nothing

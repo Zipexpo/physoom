@@ -224,9 +224,21 @@ export function RoomEventModal({
   // Track original time/room to know if re-approval will be triggered
   const origRef = useRef({ roomId: "", start: "", end: "" });
 
+  // Giới hạn theo bộ môn: ẩn phòng mà người dùng không được phép đặt (admin thấy
+  // hết; phòng không giới hạn thì ai cũng thấy). Server vẫn chặn lần cuối.
+  const myDept = normalizeDepartment(session?.user?.department);
+  const canBookRoom = (r) => {
+    const allowed = (r.allowedDepartments || []).filter(Boolean);
+    if (isAdmin || !allowed.length) return true;
+    return !!myDept && allowed.map(normalizeDepartment).includes(myDept);
+  };
   const filteredRooms = useMemo(
-    () => (rooms ?? []).filter((r) => r.title?.toLowerCase().includes(roomInput.toLowerCase())),
-    [rooms, roomInput]
+    () =>
+      (rooms ?? []).filter(
+        (r) => canBookRoom(r) && r.title?.toLowerCase().includes(roomInput.toLowerCase())
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rooms, roomInput, isAdmin, myDept]
   );
 
   const formatDuration = (mins) => {

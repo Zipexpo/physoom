@@ -29,6 +29,10 @@ const roomSchema = new Schema(
       },
     ],
     isBookable: { type: Boolean, default: false },
+    // Giới hạn đặt phòng theo bộ môn: danh sách tên bộ môn (chuẩn hoá) được phép
+    // đặt phòng này. RỖNG = mọi bộ môn đều đặt được (mặc định, như cũ). Admin luôn
+    // bỏ qua giới hạn này.
+    allowedDepartments: { type: [String], default: [] },
     note: String,
   },
   { timestamps: true }
