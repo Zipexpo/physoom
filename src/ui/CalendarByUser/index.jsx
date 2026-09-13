@@ -84,6 +84,19 @@ export default function CalendarByUser({_events=[],overlayEvents=[],isLoading,se
     const [date, setDate] = useState(new Date());
     const [view, setView] = useState(defaultView);
 
+    // Trên màn hình hẹp (điện thoại), chế độ "Tuần" dồn 7 cột vào ~360px nên vỡ
+    // layout, chữ không đọc được. Mặc định mở "Lịch biểu" (agenda) — danh sách sự
+    // kiện theo ngày, đọc tốt trên mobile. Chỉ đặt MỘT lần lúc mở; sau đó người
+    // dùng tự đổi lại tuỳ ý. (Đặt trong effect để tránh lệch hydration SSR.)
+    const [viewInit, setViewInit] = useState(false);
+    useEffect(() => {
+        if (viewInit) return;
+        setViewInit(true);
+        if (typeof window !== "undefined" && window.matchMedia("(max-width: 640px)").matches) {
+            setView("agenda");
+        }
+    }, [viewInit]);
+
     // Auto-jump: when the parent asks (jumpTo is a timestamp), navigate the
     // calendar to that day. Keyed on the primitive so it fires once per change.
     useEffect(() => {
@@ -261,7 +274,10 @@ export default function CalendarByUser({_events=[],overlayEvents=[],isLoading,se
 
     return (
         <LoadingWrapper isLoading={isLoading}>
-            <div className="h-[760px] w-full bg-white dark:bg-zinc-900 p-4 rounded-xl">
+            {/* overflow-x-auto + max-w-full: lưới lịch (chế độ Tuần/Ngày) rộng hơn
+                màn hình hẹp sẽ CUỘN NGANG TRONG thẻ này, thay vì tràn ra ngoài làm
+                cả trang cuộn ngang / lộ khoảng trống bên phải trên mobile. */}
+            <div className="h-[760px] w-full max-w-full overflow-x-auto bg-white dark:bg-zinc-900 p-4 rounded-xl">
                 <DnDCalendar
                     localizer={localizer}
                     messages={{
