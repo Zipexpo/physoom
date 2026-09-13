@@ -60,7 +60,10 @@ export const POST = async (request) => {
         continue;
       }
       const changes = {};
-      if (name && name !== (cur.name || ""))
+      // TÊN: chỉ ĐIỀN khi Physoom đang trống, KHÔNG ghi đè tên đã có. Tên bên web
+      // khoa hay bị đảo thứ tự (Võ Hoàng Nguyên → Nguyên Võ Hoàng) hoặc mất dấu
+      // (Lê Nguyễn Hoa Tiên → Le Nguyen Hoa Tien) — tệ hơn tên đúng của Physoom.
+      if (name && !(cur.name || "").trim())
         changes.name = { from: cur.name || "", to: name };
       if (teacher_id && teacher_id !== (cur.teacher_id || ""))
         changes.teacher_id = { from: cur.teacher_id || "", to: teacher_id };
