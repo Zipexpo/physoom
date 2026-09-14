@@ -11,6 +11,7 @@ import moment from "moment";
 import { defaultGridLT, defaultGridNVC } from "@/lib/ulti";
 import { getOccurrences } from "@/lib/occurrences";
 import { canManageClasses } from "@/lib/scope";
+import { syncTeachersToGoogle } from "@/lib/googleCalendar";
 
 // Scheduling an imported term inserts many series; allow more than the default.
 export const maxDuration = 60;
@@ -386,11 +387,19 @@ export const POST = async (request) => {
     }
 
     revalidateTag("booking");
-    // NOTE: class schedules are intentionally NOT auto-synced to Google here —
-    // while the department is scheduling a term, edits churn constantly. Classes
-    // reach Google only on an explicit teacher "Đồng bộ ngay" (or connect), so a
-    // published, stable timetable is what lands in their calendar. Events/meetings
-    // still sync immediately (see room-event routes).
+
+    // Đồng bộ Google tự động — CHỈ khi CHỈNH LẺ một lớp (dời lịch / đổi phòng /
+    // xếp một môn): data 1 phần tử. Import/xếp cả học kỳ (nhiều phần tử) thì KHÔNG
+    // auto (tránh dội quota) — giảng viên tự bấm "Đồng bộ ngay". Best-effort, chỉ
+    // đẩy cho giảng viên của môn vừa đổi.
+    if (data.length === 1) {
+      try {
+        await syncTeachersToGoogle(data[0]?.teacher_email || []);
+      } catch (e) {
+        console.error("auto-sync after single reschedule failed:", e?.message);
+      }
+    }
+
     return NextResponse.json(
       { success: true, created: allCreated, conflicts: allConflicts },
       { status: 201 }

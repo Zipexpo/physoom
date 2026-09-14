@@ -6,6 +6,7 @@ import Course from "@/models/course";
 import CalendarEvent from "@/models/calendarEvent";
 import { auth } from "@/lib/auth";
 import { dayVN, fetchHolidays, regenerateCourseSchedule } from "@/lib/reschedule";
+import { syncTeachersToGoogle } from "@/lib/googleCalendar";
 
 export const PUT = async (req, { params }) => {
   const { id } = params;
@@ -56,6 +57,21 @@ export const PUT = async (req, { params }) => {
           { course: updatedCourse._id, type: "class" },
           { $set: { teacher_email: teachers } }
         );
+      }
+
+      // Auto-đồng bộ Google cho giảng viên liên quan khi lịch/giảng viên đổi
+      // (chỉnh lẻ một môn → nhẹ). Đồng bộ CẢ giảng viên MỚI lẫn CŨ: đổi giảng viên
+      // thì lớp phải biến khỏi Google của người cũ và hiện ở người mới. Best-effort.
+      const teacherChanged =
+        courseData.teacher_email !== undefined &&
+        JSON.stringify([...(old.teacher_email || [])].sort()) !==
+          JSON.stringify([...(teachers || [])].sort());
+      if (teacherChanged || startChanged) {
+        try {
+          await syncTeachersToGoogle([...(teachers || []), ...(old.teacher_email || [])]);
+        } catch (e) {
+          console.error("auto-sync after course edit failed:", e?.message);
+        }
       }
 
       revalidateTag("course");

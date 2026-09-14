@@ -511,6 +511,25 @@ export async function syncUserToGoogle(email, { offset = 0, limit = Infinity, du
 }
 
 /**
+ * Đồng bộ ngay lịch của một/nhiều GIẢNG VIÊN lên Google — dùng sau khi CHỈNH LẺ
+ * một lớp (dời lịch, đổi phòng, đổi giảng viên). Nhẹ nhờ cơ chế bỏ-qua-cái-không-
+ * đổi (chỉ đụng đúng các buổi vừa thay đổi). Best-effort: ai chưa nối Google thì
+ * bỏ qua; một người lỗi không chặn người khác. KHÔNG dùng cho import/xếp hàng loạt
+ * (gọi nhiều lần sẽ dội quota Google/phút).
+ */
+export async function syncTeachersToGoogle(emails) {
+  if (!isGoogleConfigured()) return;
+  const list = [...new Set((emails || []).map((e) => String(e || "").toLowerCase()).filter(Boolean))];
+  for (const email of list) {
+    try {
+      await syncUserToGoogle(email);
+    } catch (e) {
+      console.error("auto-sync teacher to google failed:", email, e?.message);
+    }
+  }
+}
+
+/**
  * Push ONE event into every connected participant's Physoom calendar
  * (insert or patch). Cheap + awaited → reliable on serverless without any
  * post-response hook. Used for meetings/events, which sync immediately.
