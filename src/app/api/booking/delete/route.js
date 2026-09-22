@@ -5,6 +5,7 @@ import { revalidateTag } from "next/cache";
 import CalendarEvent from "@/models/calendarEvent";
 import Course from "@/models/course";
 import { auth } from "@/lib/auth";
+import { syncTeachersToGoogle } from "@/lib/googleCalendar";
 
 export const POST = async (request) => {
   const session = await auth();
@@ -22,26 +23,33 @@ export const POST = async (request) => {
     }
 
     let result;
-    // NOTE: class schedules are not auto-synced to Google (see booking/create) —
-    // teachers pull a stable, published timetable via "Đồng bộ ngay". So a delete
-    // needs no per-teacher Google refresh here.
+    // Auto-đồng bộ Google CHỈ cho các mode CHỈNH LẺ một môn/series (single/future/
+    // series/course) — thu email giảng viên TRƯỚC khi xoá rồi đồng bộ SAU, để bản
+    // vừa xoá biến khỏi Google (tránh trùng khi đổi phòng: bản cũ không bị gỡ).
+    // Mode 'class'/'courseKeys' là xoá hàng loạt khi re-import → giữ THỦ CÔNG.
+    let syncEmails = null;
+    const teachersOf = async (filter) => {
+      const evs = await CalendarEvent.find(filter, "teacher_email").lean();
+      return [...new Set(evs.flatMap((e) => e.teacher_email || []))];
+    };
     if (mode === 'single') {
       // Delete only the specific instance
+      syncEmails = await teachersOf({ _id: id });
       result = await CalendarEvent.deleteOne({ _id: id });
     } else if (mode === 'future') {
       // Delete from this point forward in the series
       if (!series_id || !start) {
         return NextResponse.json({ success: false, message: "Missing series_id or start date for future deletion" }, { status: 400 });
       }
-      result = await CalendarEvent.deleteMany({
-        series_id,
-        start: { $gte: new Date(start) }
-      });
+      const q = { series_id, start: { $gte: new Date(start) } };
+      syncEmails = await teachersOf(q);
+      result = await CalendarEvent.deleteMany(q);
     } else if (mode === 'series') {
       // Delete the entire series
       if (!series_id) {
         return NextResponse.json({ success: false, message: "Missing series_id for series deletion" }, { status: 400 });
       }
+      syncEmails = await teachersOf({ series_id });
       result = await CalendarEvent.deleteMany({ series_id });
     } else if (mode === 'course') {
       // Delete ALL series for a given course (clears the course's "Planned" status entirely)
@@ -56,6 +64,7 @@ export const POST = async (request) => {
           { status: 409 }
         );
       }
+      syncEmails = await teachersOf({ course: id, type: 'class' });
       result = await CalendarEvent.deleteMany({ course: id, type: 'class' });
     } else if (mode === 'class') {
       // Delete ALL class schedules for the given class code(s), across EVERY
@@ -112,6 +121,17 @@ export const POST = async (request) => {
     }
 
     revalidateTag("booking");
+
+    // Gỡ các buổi vừa xoá khỏi Google cho giảng viên liên quan (chỉ mode chỉnh lẻ).
+    // Best-effort: ai chưa nối Google thì bỏ qua.
+    if (syncEmails?.length) {
+      try {
+        await syncTeachersToGoogle(syncEmails);
+      } catch (e) {
+        console.error("auto-sync after delete failed:", e?.message);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       message: `Successfully deleted using ${mode} mode`,
